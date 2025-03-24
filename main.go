@@ -9,7 +9,7 @@ import (
 	"filachat/internal/api/handlers"
 	imiddleware "filachat/internal/api/middleware"
 	"filachat/internal/core"
-database "filachat/internal/data"
+	database "filachat/internal/data"
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -109,7 +109,9 @@ func main() {
 	h := &handlers.Handler{DB: &db}
 	e.POST("/signup", imiddleware.UserAuth(h.SignUp))
 	e.POST("/signin", imiddleware.UserAuth(h.SignIn))
-	e.POST("/hello", imiddleware.JWTRefreshAuth(h.Hello))
+	e.POST("/refresh-token", imiddleware.JWTRefreshAuth(h.RefreshToken))
+
+	e.File("/", "./public/index.html")
 
 	e.Logger.Fatal(e.StartTLS(":8080", "./secrets/cert.pem", "./secrets/key.pem"))
 }
