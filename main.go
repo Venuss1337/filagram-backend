@@ -7,15 +7,16 @@ import (
 	"crypto/rand"
 	"crypto/sha3"
 	"filachat/internal/api/handlers"
-	imiddleware "filachat/internal/api/middleware"
+	"filachat/internal/api/hooks"
+imiddleware "filachat/internal/api/middleware"
 	"filachat/internal/core"
 	database "filachat/internal/data"
-	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/mochi-mqtt/server/v2"
+	"github.com/mochi-mqtt/server/v2/listeners"
 	"golang.org/x/crypto/curve25519"
 	"io"
-	"log"
 	"net/http"
 )
 
@@ -45,44 +46,27 @@ func generateKeyPair() ([]byte, []byte) {
 	return publicKey, privateKey
 }
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	// Allow all connections by returning true (in production, you should validate the origin).
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
-}
-
-func wsHandler(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	defer conn.Close()
-
-	for {
-		messageType, message, err := conn.ReadMessage()
-		if err != nil {
-			log.Println("Read error:", err)
-			break
-		}
-		log.Printf("Received: %s", message)
-
-		// Echo the received message back to the client.
-		if err := conn.WriteMessage(messageType, message); err != nil {
-			log.Println("Write error:", err)
-			break
-		}
-	}
-}
-
 func main() {
 	err := core.LoadKeys()
 	if err != nil {
 		panic(err)
+	}
+
+	mqttServer := mqtt.New(nil)
+
+	err = mqttServer.AddHook(new(hooks.JWTHook), nil);
+
+	tcp := listeners.NewTCP(listeners.Config{
+		Address: "0.0.0.0:1883",})
+
+	err = mqttServer.AddListener(tcp)
+	if err != nil {
+		return
+	}
+
+	err = mqttServer.Serve()
+	if err != nil {
+		return
 	}
 
 	e := echo.New()
@@ -113,7 +97,8 @@ func main() {
 
 	e.File("/", "./public/index.html")
 
-	e.Logger.Fatal(e.StartTLS(":8080", "./secrets/cert.pem", "./secrets/key.pem"))
+	// go e.Logger.Fatal(e.StartTLS(":8080", "./secrets/cert.pem", "./secrets/key.pem"))
+	e.Logger.Fatal(e.StartAutoTLS("0.0.0.0:8080"))
 }
 
 func EncryptMessage(content, publicKey, privateKey []byte) (Message, error) {
